@@ -1,46 +1,67 @@
 #!/usr/bin/python3
-""" a Fabric script (based on the file 1-pack_web_static.py) that distributes..
-    ..an archive to your web servers, using the function do_deploy: """
+"""
+Fabric script to distribute an archive to web servers
+"""
+from fabric.api import put, run, env
+import os
 
-
-from fabric.api import *
-from datetime import datetime
-from os.path import exists
-
-
-env.hosts = ['35.237.166.125', '54.167.61.201']  # <IP web-01>, <IP web-02>
-# ^ All remote commands must be executed on your both web servers
-# (using env.hosts = ['<IP web-01>', 'IP web-02'] variable in your script)
+# Set up Fabric environment variables
+env.user = 'ubuntu'
+env.key_filename = '~/.ssh/id_rsa'
+env.hosts = ['54.144.138.231', '34.201.61.21']
 
 
 def do_deploy(archive_path):
-    """ distributes an archive to my web servers
     """
-    if exists(archive_path) is False:
-        return False  # Returns False if the file at archive_path doesnt exist
-    filename = archive_path.split('/')[-1]
-    # so now filename is <web_static_2021041409349.tgz>
-    no_tgz = '/data/web_static/releases/' + "{}".format(filename.split('.')[0])
-    # curr = '/data/web_static/current'
-    tmp = "/tmp/" + filename
+    Distributes an archive to the web servers
+    Args:
+        archive_path (str): The path to the archive to deploy
+    Returns:
+        bool: True if all operations have been done correctly, False otherwise
+    """
+    if not os.path.exists(archive_path):
+        print("Archive path does not exist")
+        return False
 
     try:
-        put(archive_path, "/tmp/")
-        # ^ Upload the archive to the /tmp/ directory of the web server
-        run("mkdir -p {}/".format(no_tgz))
-        # Uncompress the archive to the folder /data/web_static/releases/
-        # <archive filename without extension> on the web server
-        run("tar -xzf {} -C {}/".format(tmp, no_tgz))
-        run("rm {}".format(tmp))
-        run("mv {}/web_static/* {}/".format(no_tgz, no_tgz))
-        run("rm -rf {}/web_static".format(no_tgz))
-        # ^ Delete the archive from the web server
+        # Extract the archive name and folder name
+        archive_name = archive_path.split("/")[-1]
+        folder_name = "/data/web_static/releases/" + archive_name.split(".")[0]
+
+        # Upload the archive to the /tmp/ directory on the servers
+        print(f"Uploading {archive_path} to /tmp/ on servers")
+        put(archive_path, f"/tmp/{archive_name}")
+
+        # Create the target directory
+        print(f"Creating directory {folder_name} on servers")
+        run(f"mkdir -p {folder_name}")
+
+        # Uncompress the archive to the target directory
+        print(f"Uncompressing {archive_name} to {folder_name}")
+        run(f"tar -xzf /tmp/{archive_name} -C {folder_name}")
+
+        # Remove the archive from the /tmp/ directory
+        print(f"Removing archive {archive_name} from /tmp/")
+        run(f"rm /tmp/{archive_name}")
+
+        # Move the files from the web_static folder
+        print(f"Moving files from {folder_name}/web_static/ to {folder_name}/")
+        run(f"mv {folder_name}/web_static/* {folder_name}/")
+
+        # Remove the now-empty web_static folder
+        print(f"Removing empty directory {folder_name}/web_static/")
+        run(f"rm -rf {folder_name}/web_static")
+
+        # Remove the current symbolic link
+        print("Removing old symbolic link /data/web_static/current")
         run("rm -rf /data/web_static/current")
-        # Delete the symbolic link /data/web_static/current from the web server
-        run("ln -s {}/ /data/web_static/current".format(no_tgz))
-        # Create a new the symbolic link /data/web_static/current on the
-        # web server, linked to the new version of your code
-        # (/data/web_static/releases/<archive filename without extension>)
+
+        # Create a new symbolic link to the new version
+        print(f"Creating new symbolic link /data/web_static/current -> {folder_name}")
+        run(f"ln -s {folder_name} /data/web_static/current")
+
+        print("New version deployed!")
         return True
-    except:
+    except Exception as e:
+        print(f"Error during deployment: {e}")
         return False
